@@ -35,7 +35,7 @@ namespace ErlangSSHTest
         Console.WriteLine();
       };
 
-      var cfg = new CommandArgsConfiguration(args).Root;
+      var cfg       = new CommandArgsConfiguration(args).Root;
 
       var batchSize = cfg["batch"].AttrByIndex(0).ValueAsInt(1);
       var totalMsgs = cfg["count"].AttrByIndex(0).ValueAsInt(100000);
@@ -80,6 +80,15 @@ namespace ErlangSSHTest
           var mmm = remote.Attributes.FirstOrDefault(c => c.IsSameName("transport-type"));
           if (mmm.Exists)
             mmm.Delete();
+        }
+
+        if (user.IsNotNullOrWhiteSpace())
+          remote.AttrByName("ssh-user-name").Value = user;
+
+        if (privkey.IsNotNullOrWhiteSpace())
+        {
+          remote.AttrByName("ssh-private-key-file").Value    = privkey;
+          remote.AttrByName("ssh-authentication-type").Value = "PublicKey";
         }
 
         Console.WriteLine(
