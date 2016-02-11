@@ -51,7 +51,7 @@ namespace ErlangSSHTest
         Console.WriteLine(
           "Usage: {0} [-batch BatchSize] [-count Iterations] [-trace wire|handshake|send] [-notrace]\n" +
           "       [-nossh] [-user User] [-sshkey SSHKeyFile]",
-                          NFX.MiscUtils.ExeName(false));
+          MiscUtils.EntryExeName(false));
         Environment.ExitCode = 1;
         return;
       }
@@ -130,7 +130,7 @@ namespace ErlangSSHTest
               goto DONE;
             }
 
-            if (!got.Equals((IErlObject)a))
+            if (!got.Equals(a))
             {
               Console.WriteLine("Got wrong result! Expected: {0}, Got: {1}", a, got);
               count = -1;
@@ -140,7 +140,6 @@ namespace ErlangSSHTest
 
           if ((count%10000) == 0)
             Console.WriteLine("Processed {0} messages", count);
-          //Console.ReadLine();
         } while (count < totalMsgs);
 
         DONE:
@@ -167,16 +166,12 @@ namespace ErlangSSHTest
       {
         ConsoleKeyInfo i = Console.ReadKey(true);
         if (i.Key == ConsoleKey.Enter)
-        {
           break;
-        }
-        else if (i.Key == ConsoleKey.Backspace)
+        if (i.Key == ConsoleKey.Backspace)
         {
-          if (pwd.Length > 0)
-          {
-            pwd.RemoveAt(pwd.Length - 1);
-            Console.Write("\b \b");
-          }
+          if (pwd.Length <= 0) continue;
+          pwd.RemoveAt(pwd.Length - 1);
+          Console.Write("\b \b");
         }
         else
         {
