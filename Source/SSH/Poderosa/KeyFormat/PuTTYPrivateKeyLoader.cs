@@ -16,6 +16,7 @@ using NFX.SSH.Crypto;
 using NFX.SSH.PKI;
 using NFX.SSH.IO.SSH2;
 using NFX.SSH.Util;
+using System.Security;
 
 namespace NFX.SSH.Poderosa.KeyFormat {
 
@@ -49,7 +50,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
         /// <param name="passphrase">passphrase for decrypt the key file</param>
         /// <param name="keyPair">key pair</param>
         /// <param name="comment">comment or empty if it didn't exist</param>
-        public void Load(string passphrase, out KeyPair keyPair, out string comment) {
+        public void Load(SecureString passphrase, out KeyPair keyPair, out string comment) {
             if (keyFile == null)
                 throw new SSHException("A key file is not loaded yet");
 
@@ -119,7 +120,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
             }
 
             bool verified = Verify(version, privateMac, privateHash,
-                                passphrase, keyTypeName, encryptionName, comment, publicBlob, privateBlob);
+                                   passphrase, keyTypeName, encryptionName, comment, publicBlob, privateBlob);
             if (!verified) {
                 if (encryption.HasValue)
                     throw new SSHException(Strings.GetString("WrongPassphrase"));
@@ -223,19 +224,20 @@ namespace NFX.SSH.Poderosa.KeyFormat {
             blob = Base64.Decode(Encoding.ASCII.GetBytes(base64Buff.ToString()));
         }
 
-        private static byte[] PuTTYPassphraseToKey(string passphrase) {
+        private static byte[] PuTTYPassphraseToKey(SecureString passphrase) {
             const int HASH_SIZE = 20;
             SHA1CryptoServiceProvider sha1 = new SHA1CryptoServiceProvider();
-            byte[] pp = Encoding.UTF8.GetBytes(passphrase);
-
+            //byte[] pp  = Encoding.UTF8.GetBytes(passphrase);
             byte[] buf = new byte[HASH_SIZE * 2];
 
             sha1.TransformBlock(new byte[] { 0, 0, 0, 0 }, 0, 4, null, 0);
-            sha1.TransformFinalBlock(pp, 0, pp.Length);
+            sha1.HashBlock(passphrase, true);
+            //sha1.TransformFinalBlock(pp, 0, pp.Length);
             Buffer.BlockCopy(sha1.Hash, 0, buf, 0, HASH_SIZE);
             sha1.Initialize();
             sha1.TransformBlock(new byte[] { 0, 0, 0, 1 }, 0, 4, null, 0);
-            sha1.TransformFinalBlock(pp, 0, pp.Length);
+            sha1.HashBlock(passphrase, true);
+            //sha1.TransformFinalBlock(pp, 0, pp.Length);
             Buffer.BlockCopy(sha1.Hash, 0, buf, HASH_SIZE, HASH_SIZE);
             sha1.Clear();
 
@@ -245,7 +247,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
         }
 
         private bool Verify(int version, string privateMac, string privateHash,
-                string passphrase, string keyTypeName, string encryptionName, string comment, byte[] publicBlob, byte[] privateBlob) {
+                            SecureString passphrase, string keyTypeName, string encryptionName, string comment, byte[] publicBlob, byte[] privateBlob) {
 
             byte[] macData;
             using (MemoryStream macDataBuff = new MemoryStream()) {
@@ -264,30 +266,29 @@ namespace NFX.SSH.Poderosa.KeyFormat {
             }
 
             if (privateMac != null) {
-                SHA1CryptoServiceProvider sha1 = new SHA1CryptoServiceProvider();
-                byte[] a = Encoding.ASCII.GetBytes("putty-private-key-file-mac-key");
+                var sha1 = new SHA1CryptoServiceProvider();
+                var a = Encoding.ASCII.GetBytes("putty-private-key-file-mac-key");
                 sha1.TransformBlock(a, 0, a.Length, null, 0);
-                byte[] b = Encoding.UTF8.GetBytes(passphrase);
-                sha1.TransformFinalBlock(b, 0, b.Length);
-                byte[] key = sha1.Hash;
+                //var b = Encoding.UTF8.GetBytes(passphrase);
+                //sha1.TransformFinalBlock(b, 0, b.Length);
+                sha1.HashBlock(passphrase, true);
+                var key = sha1.Hash;
                 sha1.Clear();
 
-                System.Security.Cryptography.HMACSHA1 hmacsha1 = new System.Security.Cryptography.HMACSHA1(key);
+                var hmacsha1 = new HMACSHA1(key);
                 byte[] hash = hmacsha1.ComputeHash(macData);
                 hmacsha1.Clear();
                 string mac = BinToHex(hash);
                 return mac == privateMac;
             }
-            else if (privateHash != null) {
-                SHA1CryptoServiceProvider sha1 = new SHA1CryptoServiceProvider();
-                byte[] hash = sha1.ComputeHash(macData);
-                sha1.Clear();
-                string mac = BinToHex(hash);
-                return mac == privateHash;
-            }
-            else {
-                return true;
-            }
+
+            if (privateHash == null) return true;
+
+            var sha2 = new SHA1CryptoServiceProvider();
+            var hash2 = sha2.ComputeHash(macData);
+            sha2.Clear();
+            var mac2 = BinToHex(hash2);
+            return mac2 == privateHash;
         }
 
         // Extract value from "Name: value" line

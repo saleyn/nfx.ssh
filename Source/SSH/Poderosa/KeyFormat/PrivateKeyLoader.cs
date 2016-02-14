@@ -9,6 +9,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Security;
 using System.Text;
 using System.Security.Cryptography;
 
@@ -79,7 +80,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
         /// <param name="comment">comment is set. empty if it didn't exist</param>
         /// <exception cref="SSHException">failed to parse</exception>
         public void LoadSSH2PrivateKey(
-            string passphrase,
+            SecureString passphrase,
             out KeyPair keyPair,
             out string comment) {
 

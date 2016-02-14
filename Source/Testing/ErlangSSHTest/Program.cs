@@ -151,7 +151,7 @@ namespace ErlangSSHTest
             Console.WriteLine("Processed {0} messages", count);
         } while (count < totalMsgs);
 
-        DONE:
+      DONE:
         var end = DateTime.UtcNow;
         var diff = (end - start);
 
@@ -188,6 +188,7 @@ namespace ErlangSSHTest
           Console.Write("*");
         }
       }
+      pwd.MakeReadOnly(); // prevent further changes to the encrypted pwd
       return pwd;
     }
   }

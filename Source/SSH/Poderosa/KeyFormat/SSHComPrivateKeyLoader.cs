@@ -15,6 +15,7 @@ using NFX.SSH.IO.SSH2;
 using NFX.SSH.PKI;
 using NFX.SSH.SSH2;
 using NFX.SSH.Util;
+using System.Security;
 
 namespace NFX.SSH.Poderosa.KeyFormat {
 
@@ -45,18 +46,18 @@ namespace NFX.SSH.Poderosa.KeyFormat {
         /// <param name="keyPair">key pair</param>
         /// <param name="comment">comment or empty if it didn't exist</param>
         /// <exception cref="SSHException">failed to parse</exception>
-        public void Load(string passphrase, out KeyPair keyPair, out string comment) {
+        public void Load(SecureString passphrase, out KeyPair keyPair, out string comment) {
             if (keyFile == null)
                 throw new SSHException("A key file is not loaded yet");
 
-            String base64Text;
+            string base64Text;
             using (StreamReader sreader = GetStreamReader()) {
-                string line = sreader.ReadLine();
+                var line = sreader.ReadLine();
                 if (line == null || line != PrivateKeyFileHeader.SSH2_SSHCOM_HEADER)
                     throw new SSHException(Strings.GetString("NotValidPrivateKeyFile") + " (missing header)");
 
-                StringBuilder buf = new StringBuilder();
-                comment = String.Empty;
+                var buf = new StringBuilder();
+                comment = string.Empty;
                 while (true) {
                     line = sreader.ReadLine();
                     if (line == null)
@@ -75,10 +76,10 @@ namespace NFX.SSH.Poderosa.KeyFormat {
                 base64Text = buf.ToString();
             }
 
-            byte[] keydata = Base64.Decode(Encoding.ASCII.GetBytes(base64Text));
+            var keydata = Base64.Decode(Encoding.ASCII.GetBytes(base64Text));
             //Debug.WriteLine(DebugUtil.DumpByteArray(keydata));
 
-            SSH2DataReader reader = new SSH2DataReader(keydata);
+            var reader = new SSH2DataReader(keydata);
             int magic = reader.ReadInt32();
             if (magic != MAGIC)
                 throw new SSHException(Strings.GetString("NotValidPrivateKeyFile") + " (magic code unmatched)");
@@ -88,12 +89,12 @@ namespace NFX.SSH.Poderosa.KeyFormat {
             string ciphername = Encoding.ASCII.GetString(reader.ReadString());
             int bufLen = reader.ReadInt32();
             if (ciphername != "none") {
-                CipherAlgorithm algo = CipherFactory.SSH2NameToAlgorithm(ciphername);
-                byte[] key = SSH2UserAuthKey.PassphraseToKey(passphrase, CipherFactory.GetKeySize(algo));
-                Cipher c = CipherFactory.CreateCipher(SSHProtocol.SSH2, algo, key);
-                byte[] tmp = new Byte[reader.Image.Length - reader.Offset];
+                var algo = CipherFactory.SSH2NameToAlgorithm(ciphername);
+                var key  = SSH2UserAuthKey.PassphraseToKey(passphrase, CipherFactory.GetKeySize(algo));
+                var c    = CipherFactory.CreateCipher(SSHProtocol.SSH2, algo, key);
+                var tmp  = new Byte[reader.Image.Length - reader.Offset];
                 c.Decrypt(reader.Image, reader.Offset, reader.Image.Length - reader.Offset, tmp, 0);
-                reader = new SSH2DataReader(tmp);
+                reader   = new SSH2DataReader(tmp);
             }
 
             int parmLen = reader.ReadInt32();
@@ -126,7 +127,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
         }
 
         private StreamReader GetStreamReader() {
-            MemoryStream mem = new MemoryStream(keyFile, false);
+            var mem = new MemoryStream(keyFile, false);
             return new StreamReader(mem, Encoding.ASCII);
         }
 

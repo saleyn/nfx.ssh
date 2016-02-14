@@ -26,6 +26,7 @@
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
     <NoWarn>1591</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -67,6 +68,7 @@
     <Compile Include="SSH\ConnectionInfo.cs" />
     <Compile Include="SSH\ConnectionParameter.cs" />
     <Compile Include="SSH\ConnectionRoot.cs" />
+    <Compile Include="SSH\CryptoExtensions.cs" />
     <Compile Include="SSH\DataFragment.cs" />
     <Compile Include="SSH\DES.cs" />
     <Compile Include="SSH\DSA.cs" />

@@ -10,8 +10,10 @@
 #define PODEROSA_KEYFORMAT
 
 using System;
-using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using NFX.SSH.PKI;
@@ -22,82 +24,149 @@ using NFX.SSH.Crypto;
 using NFX.SSH.Poderosa.KeyFormat;
 #endif
 
-namespace NFX.SSH.SSH2 {
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <exclude/>
-    public class SSH2UserAuthKey {
+namespace NFX.SSH.SSH2
+{
+  /// <summary>
+  /// 
+  /// </summary>
+  /// <exclude/>
+  public class SSH2UserAuthKey
+  {
+    private const int MAGIC_VAL = 0x3f6ff9eb;
 
-        private const int MAGIC_VAL = 0x3f6ff9eb;
+    private KeyPair _keypair;
 
-        private KeyPair _keypair;
+    private string _comment;
 
-        private string _comment;
+    public SSH2UserAuthKey(KeyPair kp)
+    {
+      _keypair = kp;
+      _comment = "";
+    }
 
-        public SSH2UserAuthKey(KeyPair kp) {
-            _keypair = kp;
-            _comment = "";
-        }
-        public SSH2UserAuthKey(KeyPair kp, string comment) {
-            _keypair = kp;
-            _comment = comment;
-        }
+    public SSH2UserAuthKey(KeyPair kp, string comment)
+    {
+      _keypair = kp;
+      _comment = comment;
+    }
 
-        public PublicKeyAlgorithm Algorithm {
-            get {
-                return _keypair.Algorithm;
-            }
-        }
-        public KeyPair KeyPair {
-            get {
-                return _keypair;
-            }
-        }
-        public string Comment {
-            get {
-                return _comment;
-            }
-        }
+    public PublicKeyAlgorithm Algorithm
+    {
+      get { return _keypair.Algorithm; }
+    }
 
-        public byte[] Sign(byte[] data) {
-            PublicKeyAlgorithm a = _keypair.Algorithm;
-            if (a == PublicKeyAlgorithm.RSA)
-                return ((RSAKeyPair)_keypair).SignWithSHA1(data);
-            else
-                return ((DSAKeyPair)_keypair).Sign(new SHA1CryptoServiceProvider().ComputeHash(data));
-        }
-        public byte[] GetPublicKeyBlob() {
-            SSH2DataWriter w = new SSH2DataWriter();
-            w.WriteString(SSH2Util.PublicKeyAlgorithmName(_keypair.Algorithm));
-            _keypair.PublicKey.WriteTo(w);
-            return w.ToByteArray();
-        }
+    public KeyPair KeyPair
+    {
+      get { return _keypair; }
+    }
 
+    public string Comment
+    {
+      get { return _comment; }
+    }
 
-        public static byte[] PassphraseToKey(string passphrase, int length) {
-            MD5CryptoServiceProvider md5 = new MD5CryptoServiceProvider();
-            byte[] pp = Encoding.UTF8.GetBytes(passphrase);
-            int hashlen = md5.HashSize / 8;
-            byte[] buf = new byte[((length + hashlen) / hashlen) * hashlen];
-            int offset = 0;
+    public byte[] Sign(byte[] data)
+    {
+      PublicKeyAlgorithm a = _keypair.Algorithm;
+      if (a == PublicKeyAlgorithm.RSA)
+        return ((RSAKeyPair)_keypair).SignWithSHA1(data);
+      else
+        return
+          ((DSAKeyPair)_keypair).Sign(new SHA1CryptoServiceProvider().ComputeHash(data));
+    }
 
-            while (offset < length) {
-                MemoryStream s = new MemoryStream();
-                s.Write(pp, 0, pp.Length);
-                if (offset > 0)
-                    s.Write(buf, 0, offset);
-                Array.Copy(md5.ComputeHash(s.ToArray()), 0, buf, offset, hashlen);
-                offset += hashlen;
-                md5.Initialize();
-            }
+    public byte[] GetPublicKeyBlob()
+    {
+      var w = new SSH2DataWriter();
+      w.WriteString(SSH2Util.PublicKeyAlgorithmName(_keypair.Algorithm));
+      _keypair.PublicKey.WriteTo(w);
+      return w.ToByteArray();
+    }
 
-            byte[] key = new byte[length];
-            Array.Copy(buf, 0, key, 0, length);
-            return key;
-        }
+    public static byte[] PassphraseToKey(SecureString passphrase, int length)
+    {
+      var md5 = new MD5CryptoServiceProvider();
+      int hashlen = md5.HashSize/8;
+      byte[] buf = new byte[((length + hashlen)/hashlen)*hashlen];
+      int offset = 0;
 
-        /*
+      var plen = passphrase.Length;
+      var insecurePassword = new byte[plen];
+
+      var key = new byte[length];
+
+      var gch = new GCHandle();
+      RuntimeHelpers.ExecuteCodeWithGuaranteedCleanup(
+        delegate
+        {
+          RuntimeHelpers.PrepareConstrainedRegions();
+          try {}
+          finally
+          {
+            gch = GCHandle.Alloc(insecurePassword, GCHandleType.Pinned);
+          }
+
+          var passwordPtr = IntPtr.Zero;
+          RuntimeHelpers.ExecuteCodeWithGuaranteedCleanup(
+            delegate
+            {
+              RuntimeHelpers.PrepareConstrainedRegions();
+              try {}
+              finally
+              {
+                passwordPtr = Marshal.SecureStringToBSTR(passphrase);
+              }
+              unsafe
+              {
+                var pPassword = (char*)passwordPtr;
+                var pInsecurePassword = (char*)gch.AddrOfPinnedObject();
+                for (var index = 0; index < plen; index++)
+                  pInsecurePassword[index] = pPassword[index];
+              }
+            },
+            delegate
+            {
+              if (passwordPtr != IntPtr.Zero)
+                Marshal.ZeroFreeBSTR(passwordPtr);
+            },
+            null
+            );
+
+          //byte[] pp      = Encoding.UTF8.GetBytes(passphrase);
+
+          while (offset < length)
+          {
+            var s = new MemoryStream();
+            s.Write(insecurePassword, 0, insecurePassword.Length);
+            if (offset > 0)
+              s.Write(buf, 0, offset);
+
+            Array.Copy(md5.ComputeHash(s.ToArray()), 0, buf, offset, hashlen);
+            offset += hashlen;
+            md5.Initialize();
+          }
+
+          Array.Copy(buf, 0, key, 0, length);
+        },
+        delegate
+        {
+          if (!gch.IsAllocated) return;
+          // Zero the string.
+          unsafe
+          {
+            var pInsecurePassword = (char*)gch.AddrOfPinnedObject();
+            for (var index = 0; index < length; index++)
+              pInsecurePassword[index] = '\0';
+          }
+          gch.Free();
+        },
+        null
+        );
+
+      return key;
+    }
+
+    /*
          * Format style note
          *  ---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----
          *  Comment: *******
@@ -184,131 +253,145 @@ namespace NFX.SSH.SSH2 {
 
         }
 #endif
-        public static SSH2UserAuthKey FromSECSHStyleFile(string filename, string passphrase) {
+
+    public static SSH2UserAuthKey FromSECSHStyleFile(string filename,
+                                                     SecureString passphrase)
+    {
 #if PODEROSA_KEYFORMAT
-            PrivateKeyLoader loader = new PrivateKeyLoader(filename);
-            KeyPair keyPair;
-            string comment;
-            loader.LoadSSH2PrivateKey(passphrase, out keyPair, out comment);
-            return new SSH2UserAuthKey(keyPair, comment);
+      PrivateKeyLoader loader = new PrivateKeyLoader(filename);
+      KeyPair keyPair;
+      string comment;
+      loader.LoadSSH2PrivateKey(passphrase, out keyPair, out comment);
+      return new SSH2UserAuthKey(keyPair, comment);
 #else
             return FromSECSHStyleStream(new FileStream(filename, FileMode.Open, FileAccess.Read), passphrase);
 #endif
-        }
-
-        public void WritePrivatePartInSECSHStyleFile(Stream dest, string comment, string passphrase) {
-
-            //step1 key body
-            SSH2DataWriter wr = new SSH2DataWriter();
-            wr.WriteInt32(0); //this field is filled later
-            if (_keypair.Algorithm == PublicKeyAlgorithm.RSA) {
-                RSAKeyPair rsa = (RSAKeyPair)_keypair;
-                RSAPublicKey pub = (RSAPublicKey)_keypair.PublicKey;
-                wr.WriteBigIntWithBits(pub.Exponent);
-                wr.WriteBigIntWithBits(rsa.D);
-                wr.WriteBigIntWithBits(pub.Modulus);
-                wr.WriteBigIntWithBits(rsa.U);
-                wr.WriteBigIntWithBits(rsa.P);
-                wr.WriteBigIntWithBits(rsa.Q);
-            }
-            else {
-                DSAKeyPair dsa = (DSAKeyPair)_keypair;
-                DSAPublicKey pub = (DSAPublicKey)_keypair.PublicKey;
-                wr.WriteInt32(0);
-                wr.WriteBigIntWithBits(pub.P);
-                wr.WriteBigIntWithBits(pub.G);
-                wr.WriteBigIntWithBits(pub.Q);
-                wr.WriteBigIntWithBits(pub.Y);
-                wr.WriteBigIntWithBits(dsa.X);
-            }
-
-            int padding_len = 0;
-            if (passphrase != null) {
-                padding_len = 8 - (int)wr.Length % 8;
-                wr.Write(new byte[padding_len]);
-            }
-            byte[] encrypted_body = wr.ToByteArray();
-            SSHUtil.WriteIntToByteArray(encrypted_body, 0, encrypted_body.Length - padding_len - 4);
-
-            //encrypt if necessary
-            if (passphrase != null) {
-                Cipher c = CipherFactory.CreateCipher(SSHProtocol.SSH2, CipherAlgorithm.TripleDES, PassphraseToKey(passphrase, 24));
-                Debug.Assert(encrypted_body.Length % 8 == 0);
-                byte[] tmp = new Byte[encrypted_body.Length];
-                c.Encrypt(encrypted_body, 0, encrypted_body.Length, tmp, 0);
-                encrypted_body = tmp;
-            }
-
-            //step2 make binary key data
-            wr = new SSH2DataWriter();
-            wr.WriteInt32(MAGIC_VAL);
-            wr.WriteInt32(0); //for total size
-            wr.WriteString(_keypair.Algorithm == PublicKeyAlgorithm.RSA ?
-                "if-modn{sign{rsa-pkcs1-sha1},encrypt{rsa-pkcs1v2-oaep}}" :
-                "dl-modp{sign{dsa-nist-sha1},dh{plain}}");
-
-            wr.WriteString(passphrase == null ? "none" : "3des-cbc");
-            wr.WriteAsString(encrypted_body);
-
-            byte[] rawdata = wr.ToByteArray();
-            SSHUtil.WriteIntToByteArray(rawdata, 4, rawdata.Length); //fix total length
-
-            //step3 write final data
-            StreamWriter sw = new StreamWriter(dest, Encoding.ASCII);
-            sw.WriteLine("---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----");
-            if (comment != null)
-                WriteKeyFileBlock(sw, "Comment: " + comment, true);
-            WriteKeyFileBlock(sw, Encoding.ASCII.GetString(Base64.Encode(rawdata)), false);
-            sw.WriteLine("---- END SSH2 ENCRYPTED PRIVATE KEY ----");
-            sw.Close();
-
-        }
-
-        public void WritePublicPartInSECSHStyle(Stream dest, string comment) {
-            StreamWriter sw = new StreamWriter(dest, Encoding.ASCII);
-            sw.WriteLine("---- BEGIN SSH2 PUBLIC KEY ----");
-            if (comment != null)
-                WriteKeyFileBlock(sw, "Comment: " + comment, true);
-            WriteKeyFileBlock(sw, FormatBase64EncodedPublicKeyBody(), false);
-            sw.WriteLine("---- END SSH2 PUBLIC KEY ----");
-            sw.Close();
-
-        }
-        public void WritePublicPartInOpenSSHStyle(Stream dest) {
-            StreamWriter sw = new StreamWriter(dest, Encoding.ASCII);
-            sw.Write(SSH2Util.PublicKeyAlgorithmName(_keypair.Algorithm));
-            sw.Write(' ');
-            sw.WriteLine(FormatBase64EncodedPublicKeyBody());
-            sw.Close();
-        }
-        private string FormatBase64EncodedPublicKeyBody() {
-            SSH2DataWriter wr = new SSH2DataWriter();
-            wr.WriteString(SSH2Util.PublicKeyAlgorithmName(_keypair.Algorithm));
-            _keypair.PublicKey.WriteTo(wr);
-
-            return Encoding.ASCII.GetString(Base64.Encode(wr.ToByteArray()));
-        }
-
-        private static void WriteKeyFileBlock(StreamWriter sw, string data, bool escape_needed) {
-            char[] d = data.ToCharArray();
-            int cursor = 0;
-            const int maxlen = 70;
-            while (cursor < d.Length) {
-                if (maxlen >= d.Length - cursor)
-                    sw.WriteLine(d, cursor, d.Length - cursor);
-                else {
-                    if (escape_needed) {
-                        sw.Write(d, cursor, maxlen - 1);
-                        sw.WriteLine('\\');
-                        cursor--;
-                    }
-                    else
-                        sw.WriteLine(d, cursor, maxlen);
-                }
-
-                cursor += maxlen;
-            }
-        }
     }
 
+    public void WritePrivatePartInSECSHStyleFile(Stream dest, string comment,
+                                                 SecureString passphrase)
+    {
+      //step1 key body
+      SSH2DataWriter wr = new SSH2DataWriter();
+      wr.WriteInt32(0); //this field is filled later
+      if (_keypair.Algorithm == PublicKeyAlgorithm.RSA)
+      {
+        RSAKeyPair rsa = (RSAKeyPair)_keypair;
+        RSAPublicKey pub = (RSAPublicKey)_keypair.PublicKey;
+        wr.WriteBigIntWithBits(pub.Exponent);
+        wr.WriteBigIntWithBits(rsa.D);
+        wr.WriteBigIntWithBits(pub.Modulus);
+        wr.WriteBigIntWithBits(rsa.U);
+        wr.WriteBigIntWithBits(rsa.P);
+        wr.WriteBigIntWithBits(rsa.Q);
+      }
+      else
+      {
+        DSAKeyPair dsa = (DSAKeyPair)_keypair;
+        DSAPublicKey pub = (DSAPublicKey)_keypair.PublicKey;
+        wr.WriteInt32(0);
+        wr.WriteBigIntWithBits(pub.P);
+        wr.WriteBigIntWithBits(pub.G);
+        wr.WriteBigIntWithBits(pub.Q);
+        wr.WriteBigIntWithBits(pub.Y);
+        wr.WriteBigIntWithBits(dsa.X);
+      }
+
+      int padding_len = 0;
+      if (passphrase != null)
+      {
+        padding_len = 8 - (int)wr.Length%8;
+        wr.Write(new byte[padding_len]);
+      }
+      byte[] encrypted_body = wr.ToByteArray();
+      SSHUtil.WriteIntToByteArray(encrypted_body, 0,
+                                  encrypted_body.Length - padding_len - 4);
+
+      //encrypt if necessary
+      if (passphrase != null)
+      {
+        var c = CipherFactory.CreateCipher(SSHProtocol.SSH2, CipherAlgorithm.TripleDES,
+                                           PassphraseToKey(passphrase, 24));
+        Debug.Assert(encrypted_body.Length%8 == 0);
+        var tmp = new byte[encrypted_body.Length];
+        c.Encrypt(encrypted_body, 0, encrypted_body.Length, tmp, 0);
+        encrypted_body = tmp;
+      }
+
+      //step2 make binary key data
+      wr = new SSH2DataWriter();
+      wr.WriteInt32(MAGIC_VAL);
+      wr.WriteInt32(0); //for total size
+      wr.WriteString(_keypair.Algorithm == PublicKeyAlgorithm.RSA
+        ? "if-modn{sign{rsa-pkcs1-sha1},encrypt{rsa-pkcs1v2-oaep}}"
+        : "dl-modp{sign{dsa-nist-sha1},dh{plain}}");
+
+      wr.WriteString(passphrase == null ? "none" : "3des-cbc");
+      wr.WriteAsString(encrypted_body);
+
+      var rawdata = wr.ToByteArray();
+      SSHUtil.WriteIntToByteArray(rawdata, 4, rawdata.Length); //fix total length
+
+      //step3 write final data
+      var sw = new StreamWriter(dest, Encoding.ASCII);
+      sw.WriteLine("---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----");
+      if (comment != null)
+        WriteKeyFileBlock(sw, "Comment: " + comment, true);
+      WriteKeyFileBlock(sw, Encoding.ASCII.GetString(Base64.Encode(rawdata)), false);
+      sw.WriteLine("---- END SSH2 ENCRYPTED PRIVATE KEY ----");
+      sw.Close();
+    }
+
+    public void WritePublicPartInSECSHStyle(Stream dest, string comment)
+    {
+      var sw = new StreamWriter(dest, Encoding.ASCII);
+      sw.WriteLine("---- BEGIN SSH2 PUBLIC KEY ----");
+      if (comment != null)
+        WriteKeyFileBlock(sw, "Comment: " + comment, true);
+      WriteKeyFileBlock(sw, FormatBase64EncodedPublicKeyBody(), false);
+      sw.WriteLine("---- END SSH2 PUBLIC KEY ----");
+      sw.Close();
+    }
+
+    public void WritePublicPartInOpenSSHStyle(Stream dest)
+    {
+      var sw = new StreamWriter(dest, Encoding.ASCII);
+      sw.Write(SSH2Util.PublicKeyAlgorithmName(_keypair.Algorithm));
+      sw.Write(' ');
+      sw.WriteLine(FormatBase64EncodedPublicKeyBody());
+      sw.Close();
+    }
+
+    private string FormatBase64EncodedPublicKeyBody()
+    {
+      var wr = new SSH2DataWriter();
+      wr.WriteString(SSH2Util.PublicKeyAlgorithmName(_keypair.Algorithm));
+      _keypair.PublicKey.WriteTo(wr);
+
+      return Encoding.ASCII.GetString(Base64.Encode(wr.ToByteArray()));
+    }
+
+    private static void WriteKeyFileBlock(TextWriter sw, string data, bool escape_needed)
+    {
+      var d = data.ToCharArray();
+      var cursor = 0;
+      const int maxlen = 70;
+      while (cursor < d.Length)
+      {
+        if (maxlen >= d.Length - cursor)
+          sw.WriteLine(d, cursor, d.Length - cursor);
+        else if (escape_needed)
+        {
+          sw.Write(d, cursor, maxlen - 1);
+          sw.WriteLine('\\');
+          cursor--;
+        }
+        else
+          sw.WriteLine(d, cursor, maxlen);
+
+        cursor += maxlen;
+      }
+    }
+
+  }
 }

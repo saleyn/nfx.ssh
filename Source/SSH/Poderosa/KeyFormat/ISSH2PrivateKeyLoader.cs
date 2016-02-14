@@ -7,7 +7,7 @@
  * $Id: ISSH2PrivateKeyLoader.cs,v 1.1 2011/11/03 16:27:38 kzmi Exp $
  */
 using System;
-
+using System.Security;
 using NFX.SSH;
 using NFX.SSH.PKI;
 
@@ -23,7 +23,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
         /// <param name="comment">comment is set. empty if it didn't exist</param>
         /// <exception cref="SSHException">failed to parse</exception>
         void Load(
-            string passphrase,
+            SecureString passphrase,
             out KeyPair keyPair,
             out string comment);
 

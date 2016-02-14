@@ -8,11 +8,8 @@
 */
 
 using System;
-using System.Collections;
-using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
-using System.Diagnostics;
-using System.Net.Sockets;
 using System.Text;
 using System.Security.Cryptography;
 
@@ -58,9 +55,11 @@ namespace NFX.SSH.SSH2 {
 
         internal SSH2Connection(SSHConnectionParameter param, AbstractGranadosSocket strm, ISSHConnectionEventReceiver r, string serverversion, string clientversion)
             : base(param, strm, r) {
-            _cInfo = new SSH2ConnectionInfo();
-            _cInfo._serverVersionString = serverversion;
-            _cInfo._clientVersionString = clientversion;
+            _cInfo = new SSH2ConnectionInfo
+            {
+              _serverVersionString = serverversion,
+              _clientVersionString = clientversion
+            };
 
             _packetReceiver = new SynchronizedPacketReceiver(this);
             _packetBuilder = new SSH2PacketBuilder(_packetReceiver);
@@ -81,7 +80,7 @@ namespace NFX.SSH.SSH2 {
 
         internal override AuthenticationResult Connect() {
             //key exchange
-            KeyExchanger kex = new KeyExchanger(this, null);
+            var kex = new KeyExchanger(this, null);
             if (!kex.SynchronizedKexExchange()) {
                 Close();
                 return AuthenticationResult.Failure;
@@ -102,15 +101,15 @@ namespace NFX.SSH.SSH2 {
             TraceTransmissionEvent("SSH_MSG_SERVICE_REQUEST", servicename);
             TransmitPacket(packet);
 
-            DataFragment response = ReceivePacket();
-            SSH2DataReader re = new SSH2DataReader(response);
-            PacketType t = re.ReadPacketType();
+            var response = ReceivePacket();
+            var re = new SSH2DataReader(response);
+            var t = re.ReadPacketType();
             if (t != PacketType.SSH_MSG_SERVICE_ACCEPT) {
                 TraceReceptionEvent(t.ToString(), "service request failed");
                 throw new SSHException("service establishment failed " + t);
             }
 
-            string s = Encoding.ASCII.GetString(re.ReadString());
+            var s = Encoding.ASCII.GetString(re.ReadString());
             if (servicename != s)
                 throw new SSHException("protocol error");
         }
@@ -118,8 +117,8 @@ namespace NFX.SSH.SSH2 {
         private AuthenticationResult UserAuth() {
             const string sn = "ssh-connection";
             if (_param.AuthenticationType == AuthenticationType.KeyboardInteractive) {
-                SSH2TransmissionPacket packet = OpenPacket();
-                SSH2DataWriter wr = packet.DataWriter;
+                var packet = OpenPacket();
+                var wr = packet.DataWriter;
                 wr.WritePacketType(PacketType.SSH_MSG_USERAUTH_REQUEST);
                 wr.WriteString(_param.UserName);
                 wr.WriteString(sn);
@@ -131,8 +130,8 @@ namespace NFX.SSH.SSH2 {
                 _authenticationResult = ProcessAuthenticationResponse();
             }
             else {
-                SSH2TransmissionPacket packet = OpenPacket();
-                SSH2DataWriter wr = packet.DataWriter;
+                var packet = OpenPacket();
+                var wr     = packet.DataWriter;
                 wr.WritePacketType(PacketType.SSH_MSG_USERAUTH_REQUEST);
                 wr.WriteString(_param.UserName);
                 if (_param.AuthenticationType == AuthenticationType.Password) {
@@ -140,7 +139,12 @@ namespace NFX.SSH.SSH2 {
                     wr.WriteString(sn);
                     wr.WriteString("password");
                     wr.WriteBool(false);
-                    wr.WriteString(_param.Password);
+                    using (var bytes = new CryptoExtensions.SecureStringToByteArrayAdapter(_param.Password))
+                    {
+                        for(var i=0; i < bytes.Length; ++i)
+                            wr.WriteByte(bytes[i]);
+                    }
+
                     TraceTransmissionEvent(PacketType.SSH_MSG_USERAUTH_REQUEST, "starting password authentication");
                 }
                 else {
@@ -254,17 +258,17 @@ namespace NFX.SSH.SSH2 {
 
         //open channel
         private SSHChannel DoExecCommandInternal(ISSHChannelEventReceiver receiver, ChannelType channel_type, string command, string message) {
-            SSH2TransmissionPacket packet = OpenPacket();
-            SSH2DataWriter wr = packet.DataWriter;
+            var packet = OpenPacket();
+            var wr = packet.DataWriter;
             wr.WritePacketType(PacketType.SSH_MSG_CHANNEL_OPEN);
             wr.WriteString("session");
-            int local_channel = this.ChannelCollection.RegisterChannelEventReceiver(null, receiver).LocalID;
+            var local_channel = this.ChannelCollection.RegisterChannelEventReceiver(null, receiver).LocalID;
 
             wr.WriteInt32(local_channel);
             wr.WriteInt32(_param.WindowSize); //initial window size
-            int windowsize = _param.WindowSize;
+            var windowsize = _param.WindowSize;
             wr.WriteInt32(_param.MaxPacketSize); //max packet size
-            SSH2Channel channel = new SSH2Channel(this, channel_type, local_channel, command);
+            var channel = new SSH2Channel(this, channel_type, local_channel, command);
             TraceTransmissionEvent(PacketType.SSH_MSG_CHANNEL_OPEN, message);
             TransmitPacket(packet);
 
@@ -272,8 +276,8 @@ namespace NFX.SSH.SSH2 {
         }
 
         public override SSHChannel ForwardPort(ISSHChannelEventReceiver receiver, string remote_host, int remote_port, string originator_host, int originator_port) {
-            SSH2TransmissionPacket packet = OpenPacket();
-            SSH2DataWriter wr = packet.DataWriter;
+            var packet = OpenPacket();
+            var wr = packet.DataWriter;
             wr.WritePacketType(PacketType.SSH_MSG_CHANNEL_OPEN);
             wr.WriteString("direct-tcpip");
             int local_id = this.ChannelCollection.RegisterChannelEventReceiver(null, receiver).LocalID;
@@ -295,9 +299,9 @@ namespace NFX.SSH.SSH2 {
         }
 
         public override void ListenForwardedPort(string allowed_host, int bind_port) {
-            SSH2TransmissionPacket packet = OpenPacket();
-            SSH2DataWriter wr = packet.DataWriter;
-            ;
+            var packet = OpenPacket();
+            var wr = packet.DataWriter;
+            
             wr.WritePacketType(PacketType.SSH_MSG_GLOBAL_REQUEST);
             wr.WriteString("tcpip-forward");
             wr.WriteBool(true);
@@ -310,9 +314,9 @@ namespace NFX.SSH.SSH2 {
         }
 
         public override void CancelForwardedPort(string host, int port) {
-            SSH2TransmissionPacket packet = OpenPacket();
-            SSH2DataWriter wr = packet.DataWriter;
-            ;
+            var packet = OpenPacket();
+            var wr = packet.DataWriter;
+            
             wr.WritePacketType(PacketType.SSH_MSG_GLOBAL_REQUEST);
             wr.WriteString("cancel-tcpip-forward");
             wr.WriteBool(true);
@@ -324,20 +328,20 @@ namespace NFX.SSH.SSH2 {
 
         private void ProcessPortforwardingRequest(ISSHConnectionEventReceiver receiver, SSH2DataReader reader) {
 
-            int remote_channel = reader.ReadInt32();
-            int window_size = reader.ReadInt32(); //skip initial window size
-            int servermaxpacketsize = reader.ReadInt32();
-            string host = Encoding.ASCII.GetString(reader.ReadString());
-            int port = reader.ReadInt32();
-            string originator_ip = Encoding.ASCII.GetString(reader.ReadString());
-            int originator_port = reader.ReadInt32();
+            var remote_channel = reader.ReadInt32();
+            var window_size = reader.ReadInt32(); //skip initial window size
+            var servermaxpacketsize = reader.ReadInt32();
+            var host = Encoding.ASCII.GetString(reader.ReadString());
+            var port = reader.ReadInt32();
+            var originator_ip = Encoding.ASCII.GetString(reader.ReadString());
+            var originator_port = reader.ReadInt32();
 
             TraceReceptionEvent("port forwarding request", String.Format("host={0} port={1} originator-ip={2} originator-port={3}", host, port, originator_ip, originator_port));
-            PortForwardingCheckResult r = receiver.CheckPortForwardingRequest(host, port, originator_ip, originator_port);
-            SSH2DataWriter wr = new SSH2DataWriter();
+            var r = receiver.CheckPortForwardingRequest(host, port, originator_ip, originator_port);
+            var wr = new SSH2DataWriter();
             if (r.allowed) {
                 //send OPEN_CONFIRMATION
-                SSH2Channel channel = new SSH2Channel(this, ChannelType.ForwardedRemoteToLocal, this.ChannelCollection.RegisterChannelEventReceiver(null, r.channel).LocalID, remote_channel, servermaxpacketsize);
+                var channel = new SSH2Channel(this, ChannelType.ForwardedRemoteToLocal, this.ChannelCollection.RegisterChannelEventReceiver(null, r.channel).LocalID, remote_channel, servermaxpacketsize);
                 wr.WritePacketType(PacketType.SSH_MSG_CHANNEL_OPEN_CONFIRMATION);
                 wr.WriteInt32(remote_channel);
                 wr.WriteInt32(channel.LocalChannelID);
@@ -358,17 +362,17 @@ namespace NFX.SSH.SSH2 {
         }
 
         private void ProcessAgentForwardRequest(ISSHConnectionEventReceiver receiver, SSH2DataReader reader) {
-            int remote_channel = reader.ReadInt32();
-            int window_size = reader.ReadInt32(); //skip initial window size
-            int servermaxpacketsize = reader.ReadInt32();
+            var remote_channel = reader.ReadInt32();
+            var window_size = reader.ReadInt32(); //skip initial window size
+            var servermaxpacketsize = reader.ReadInt32();
             TraceReceptionEvent("agent forward request", "");
 
-            SSH2DataWriter wr = new SSH2DataWriter();
-            IAgentForward af = _param.AgentForward;
+            var wr = new SSH2DataWriter();
+            var af = _param.AgentForward;
             if (_agentForwardConfirmed && af != null && af.CanAcceptForwarding()) {
                 //send OPEN_CONFIRMATION
-                AgentForwardingChannel ch = new AgentForwardingChannel(af);
-                SSH2Channel channel = new SSH2Channel(this, ChannelType.AgentForward, this.ChannelCollection.RegisterChannelEventReceiver(null, ch).LocalID, remote_channel, servermaxpacketsize);
+                var ch = new AgentForwardingChannel(af);
+                var channel = new SSH2Channel(this, ChannelType.AgentForward, this.ChannelCollection.RegisterChannelEventReceiver(null, ch).LocalID, remote_channel, servermaxpacketsize);
                 ch.SetChannel(channel);
                 wr.WritePacketType(PacketType.SSH_MSG_CHANNEL_OPEN_CONFIRMATION);
                 wr.WriteInt32(remote_channel);
@@ -389,30 +393,28 @@ namespace NFX.SSH.SSH2 {
         }
 
         private SSH2TransmissionPacket OpenPacket() {
-            SSH2TransmissionPacket packet = _transmissionPacket;
-            if (packet == null) {
-                packet = _transmissionPacket = new SSH2TransmissionPacket();
-            }
+            SSH2TransmissionPacket packet = _transmissionPacket ??
+                                           (_transmissionPacket = new SSH2TransmissionPacket());
             packet.Open();
             return packet;
         }
 
         internal void TransmitPacket(SSH2TransmissionPacket packet) {
             lock (_transmitSync) {
-                DataFragment data = packet.Close(_tCipher, _tMAC, _tSequence++);
+                var data = packet.Close(_tCipher, _tMAC, _tSequence++);
                 _stream.Write(data.Data, data.Offset, data.Length);
             }
         }
 
         private void TransmitRawPayload(byte[] payload) {
-            SSH2TransmissionPacket packet = OpenPacket();
+            var packet = OpenPacket();
             packet.DataWriter.Write(payload);
             TransmitPacket(packet);
         }
 
         internal DataFragment SynchronizedTransmitPacket(SSH2TransmissionPacket packet) {
             lock (_transmitSync) {
-                DataFragment data = packet.Close(_tCipher, _tMAC, _tSequence++);
+                var data = packet.Close(_tCipher, _tMAC, _tSequence++);
                 return _packetReceiver.SendAndWaitResponse(data);
             }
         }
@@ -501,8 +503,8 @@ namespace NFX.SSH.SSH2 {
                 ChannelCollection.Entry e = this.ChannelCollection.FindChannelEntry(local_channel);
                 if (e != null)
                     ((SSH2Channel)e.Channel).ProcessPacket(e.Receiver, pt, 5 + r.Rest, r);
-                else
-                    ;//Debug.WriteLine("unexpected channel pt=" + pt + " local_channel=" + local_channel.ToString());
+                //else
+                //    Debug.WriteLine("unexpected channel pt=" + pt + " local_channel=" + local_channel.ToString());
                 return true;
             }
             else if (pt == PacketType.SSH_MSG_IGNORE) {

@@ -9,6 +9,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Security;
 using System.Text;
 using System.Security.Cryptography;
 
@@ -48,7 +49,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
         /// <param name="passphrase">passphrase for decrypt the key file</param>
         /// <param name="keyPair">key pair</param>
         /// <param name="comment">comment or empty if it didn't exist</param>
-        public void Load(string passphrase, out KeyPair keyPair, out string comment) {
+        public void Load(SecureString passphrase, out KeyPair keyPair, out string comment) {
             if (keyFile == null)
                 throw new SSHException("A key file is not loaded yet");
 
@@ -196,18 +197,19 @@ namespace NFX.SSH.Poderosa.KeyFormat {
             }
         }
 
-        private static byte[] OpenSSHPassphraseToKey(string passphrase, byte[] iv, int length) {
+        private static byte[] OpenSSHPassphraseToKey(SecureString passphrase, byte[] iv, int length) {
             const int HASH_SIZE = 16;
             const int SALT_SIZE = 8;
-            MD5CryptoServiceProvider md5 = new MD5CryptoServiceProvider();
-            byte[] pp = Encoding.UTF8.GetBytes(passphrase);
-            byte[] buf = new byte[((length + HASH_SIZE - 1) / HASH_SIZE) * HASH_SIZE];
-            int offset = 0;
+            var md5 = new MD5CryptoServiceProvider();
+            //var pp  = Encoding.UTF8.GetBytes(passphrase);
+            var buf = new byte[((length + HASH_SIZE - 1) / HASH_SIZE) * HASH_SIZE];
+            var offset = 0;
 
             while (offset < length) {
                 if (offset > 0)
                     md5.TransformBlock(buf, 0, offset, null, 0);
-                md5.TransformBlock(pp, 0, pp.Length, null, 0);
+                //md5.TransformBlock(pp, 0, pp.Length, null, 0);
+                md5.HashBlock(passphrase, false);
                 md5.TransformFinalBlock(iv, 0, SALT_SIZE);
                 Buffer.BlockCopy(md5.Hash, 0, buf, offset, HASH_SIZE);
                 offset += HASH_SIZE;
@@ -215,7 +217,7 @@ namespace NFX.SSH.Poderosa.KeyFormat {
             }
             md5.Clear();
 
-            byte[] key = new byte[length];
+            var key = new byte[length];
             Buffer.BlockCopy(buf, 0, key, 0, length);
             return key;
         }

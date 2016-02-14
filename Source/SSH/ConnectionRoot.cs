@@ -8,17 +8,11 @@
 */
 
 using System;
-using System.Collections;
-using System.IO;
 using System.Net.Sockets;
 using System.Text;
-using NFX.SSH.Crypto;
-using NFX.SSH.PKI;
 using NFX.SSH.SSH2;
 using NFX.SSH.IO;
 using NFX.SSH.Util;
-using System.Diagnostics;
-using System.Threading;
 
 namespace NFX.SSH {
     /// <summary>
