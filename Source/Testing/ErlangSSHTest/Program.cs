@@ -1,18 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security;
-using System.Text;
-using System.Threading.Tasks;
 using NFX;
 using NFX.ApplicationModel;
 using NFX.Environment;
 using NFX.Erlang;
-using NFX.SSH;
-using NFX.SSH.PKI;
-using NFX.SSH.SSH2;
 
 
 //Start Erlang with params:
@@ -23,6 +18,21 @@ using NFX.SSH.SSH2;
 
 namespace ErlangSSHTest
 {
+  public class ConsoleHelper
+  {
+    /// <summary>
+    /// Allocates a new console for current process.
+    /// </summary>
+    [DllImport("kernel32.dll")]
+    public static extern Boolean AllocConsole();
+
+    /// <summary>
+    /// Frees the console.
+    /// </summary>
+    [DllImport("kernel32.dll")]
+    public static extern Boolean FreeConsole();
+  }
+
   internal class Program
   {
     private static void Main(string[] args)
@@ -35,29 +45,29 @@ namespace ErlangSSHTest
         Console.WriteLine();
       };
 
-      var cfg       = new CommandArgsConfiguration(args).Root;
-
-      var batchSize = cfg["batch"].AttrByIndex(0).ValueAsInt(1);
-      var totalMsgs = cfg["count"].AttrByIndex(0).ValueAsInt(100000);
-      var traceAttr = cfg["trace"].AttrByIndex(0);
-      var trace     = traceAttr.ValueAsEnum(ErlTraceLevel.Handshake);
-      var noSSH     = cfg["nossh"].Exists;
-      var noTrace   = cfg["notrace"].Exists;
-      var user      = cfg["user"].AttrByIndex(0).ValueAsString("");
-      var privkey   = cfg["sshkey"].AttrByIndex(0).ValueAsString("");
-
-      if (cfg["h", "help"].Exists)
+      using (var app = new ServiceBaseApplication(args, null))
       {
-        Console.WriteLine(
-          "Usage: {0} [-batch BatchSize] [-count Iterations] [-trace wire|handshake|send] [-notrace]\n" +
-          "       [-nossh] [-user User] [-sshkey SSHKeyFile]",
-          MiscUtils.EntryExeName(false));
-        Environment.ExitCode = 1;
-        return;
-      }
+        var cfg = (ConfigSectionNode)app.CommandArgs;
 
-      using (new ServiceBaseApplication(args, null))
-      {
+        var batchSize = cfg["batch"].AttrByIndex(0).ValueAsInt(1);
+        var totalMsgs = cfg["count"].AttrByIndex(0).ValueAsInt(100000);
+        var traceAttr = cfg["trace"].AttrByIndex(0);
+        var trace     = traceAttr.ValueAsEnum(ErlTraceLevel.Handshake);
+        var noSSH     = cfg["nossh"].Exists;
+        var noTrace   = cfg["notrace"].Exists;
+        var user      = cfg["user"].AttrByIndex(0).ValueAsString("");
+        var privkey   = cfg["sshkey"].AttrByIndex(0).ValueAsString("");
+
+        if (cfg["h", "help"].Exists)
+        {
+          Console.WriteLine(
+            "Usage: {0} [-batch BatchSize] [-count Iterations] [-trace wire|handshake|send] [-notrace]\n" +
+            "       [-nossh] [-user User] [-sshkey SSHKeyFile]",
+            MiscUtils.EntryExeName(false));
+          Environment.ExitCode = 1;
+          return;
+        }
+
         var n = ErlApp.Node;
         n.AcceptConnections = false;
         n.TraceLevel        = traceAttr.Exists && n.TraceLevel == ErlTraceLevel.Off
@@ -98,7 +108,7 @@ namespace ErlangSSHTest
         Console.WriteLine("2> echo_server:run({0}).\n", batchSize == 1 ? "1" : "");
         Console.WriteLine("Press <Enter> when ready...");
 
-        Console.Read();
+        Console.ReadLine();
 
         var m = n.CreateMbox("test");
         var a = new ErlAtom("hello");
@@ -170,24 +180,26 @@ namespace ErlangSSHTest
 
     public static SecureString GetPassword()
     {
-      SecureString pwd = new SecureString();
+      var pwd = new SecureString();
       while (true)
       {
-        ConsoleKeyInfo i = Console.ReadKey(true);
-        if (i.Key == ConsoleKey.Enter)
-          break;
-        if (i.Key == ConsoleKey.Backspace)
+        var i = Console.ReadKey(true);
+        switch (i.Key)
         {
-          if (pwd.Length <= 0) continue;
-          pwd.RemoveAt(pwd.Length - 1);
-          Console.Write("\b \b");
-        }
-        else
-        {
-          pwd.AppendChar(i.KeyChar);
-          Console.Write("*");
+          case ConsoleKey.Enter:
+            goto DONE;
+          case ConsoleKey.Backspace:
+            if (pwd.Length <= 0) continue;
+            pwd.RemoveAt(pwd.Length - 1);
+            Console.Write("\b \b");
+            break;
+          default:
+            pwd.AppendChar(i.KeyChar);
+            Console.Write("*");
+            break;
         }
       }
+    DONE:
       pwd.MakeReadOnly(); // prevent further changes to the encrypted pwd
       return pwd;
     }

@@ -139,11 +139,11 @@ namespace NFX.SSH.SSH2 {
                     wr.WriteString(sn);
                     wr.WriteString("password");
                     wr.WriteBool(false);
+                    // Write the password
+                    wr.WriteInt32(_param.Password.Length);
                     using (var bytes = new CryptoExtensions.SecureStringToByteArrayAdapter(_param.Password))
-                    {
                         for(var i=0; i < bytes.Length; ++i)
                             wr.WriteByte(bytes[i]);
-                    }
 
                     TraceTransmissionEvent(PacketType.SSH_MSG_USERAUTH_REQUEST, "starting password authentication");
                 }

@@ -36,9 +36,9 @@ nfx
             // ssh-authentication-type (Password or PublicKey)
 
             transport-type           = "NFX.Erlang.ErlSshTransport, NFX.SSH"	//inject SSH transport calss
-            ssh-user-name            = "serge" //enter here your user account to connect to SSH server
-            ssh-private-key-file     = "c:\\Users\\serge\\.ssh\\id_rsa"
-            ssh-authentication-type  = "PublicKey" // "Password"
+            ssh-user-name            = "$(~USERNAME)" //enter here your user account to connect to SSH server
+            //ssh-private-key-file     = "c:\\Users\\serge\\.ssh\\id_rsa"
+            //ssh-authentication-type  = "PublicKey" // "Password"
 
             tcp-no-delay             = true
             tcp-rcv-buf-size         = 100000

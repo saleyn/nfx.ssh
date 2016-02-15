@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace NFX.SSH
 {
