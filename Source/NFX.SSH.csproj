@@ -34,10 +34,12 @@
     <OutputPath>..\Output\$(Configuration)</OutputPath>
     <IntermediateOutputPath>..\Output\obj\$(MSBuildProjectName)\$(Configuration)</IntermediateOutputPath>
     <DocumentationFile>..\Output\$(Configuration)\$(MSbuildProjectName).XML</DocumentationFile>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>
+    </DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="NFX, Version=2.0.0.1, Culture=neutral, processorArchitecture=MSIL">
