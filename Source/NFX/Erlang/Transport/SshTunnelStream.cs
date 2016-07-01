@@ -100,6 +100,7 @@ namespace NFX.Erlang
         public override void Close()
         {
             base.Close();
+            m_Channel.Connection.Close();
         }
 
         public override void Flush()

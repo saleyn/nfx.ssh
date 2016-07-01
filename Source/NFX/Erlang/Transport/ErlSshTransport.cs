@@ -210,7 +210,7 @@ namespace NFX.Erlang
       set { m_Client.NoDelay = value; }
     }
 
-    public void Close()   { m_Client.Close(); }
+    public void Close()   { m_Stream.Close(); m_Client.Close(); }
     public void Dispose() { m_Client.Dispose(); }
 
     public void SetSocketOption(SocketOptionLevel optionLevel, SocketOptionName optionName,
